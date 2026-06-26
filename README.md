@@ -36,6 +36,11 @@ sqlfluff rules | grep Ktuft
 
 You should see rules such as `Ktuft_KL01` and `Ktuft_KL19`.
 
+The package also installs two console commands:
+
+- `sqlfluff-ktuft`: always runs SQLFluff with the KTuft personal profile.
+- `sqlfluff-profile`: runs SQLFluff through a toggleable active profile.
+
 ## Recommended Rule Profile
 
 The personal profile is:
@@ -100,36 +105,179 @@ sqlfluff fix debug/sqlfluff-style-lab/output/models \
   -n
 ```
 
-## Optional Personal Wrapper
+## Profile Toggle Commands
 
-To avoid changing a repo's default formatter, create a local wrapper script that
-always passes the personal rule profile. Keep this script outside project repos,
-for example at `~/.local/bin/sqlfluff-ktuft`.
+Use `sqlfluff-profile` when you want one command that can toggle between the
+repo formatter, the KTuft formatter, and any other profiles you define.
 
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-RULES="AL01,ST05,LT12,Ktuft_KL01,Ktuft_KL02,Ktuft_KL03,Ktuft_KL04,Ktuft_KL05,Ktuft_KL06,Ktuft_KL07,Ktuft_KL08,Ktuft_KL09,Ktuft_KL10,Ktuft_KL11,Ktuft_KL12,Ktuft_KL13,Ktuft_KL14,Ktuft_KL15,Ktuft_KL16,Ktuft_KL17,Ktuft_KL18,Ktuft_KL19"
-
-sqlfluff "$@" --rules "$RULES"
-```
-
-Make it executable:
+Initialize the user-level profile file:
 
 ```bash
-chmod +x ~/.local/bin/sqlfluff-ktuft
+sqlfluff-profile init
 ```
 
-Then run:
+This creates:
+
+```text
+~/.config/sqlfluff-ktuft/profiles.json
+```
+
+Default profiles:
+
+- `repo`: passes through to SQLFluff without adding rules or config. This keeps
+  the repo/environment formatter unchanged.
+- `ktuft`: adds the KTuft personal rule profile.
+
+List profiles:
+
+```bash
+sqlfluff-profile list
+```
+
+Show the active profile:
+
+```bash
+sqlfluff-profile current
+```
+
+Switch directly:
+
+```bash
+sqlfluff-profile use ktuft
+sqlfluff-profile use repo
+```
+
+Cycle to the next profile:
+
+```bash
+sqlfluff-profile next
+```
+
+Run SQLFluff using the active profile:
+
+```bash
+sqlfluff-profile fix models/intermediate/staff/int_gar_staff_annual_clean.sql --config .sqlfluff -n
+```
+
+The `sqlfluff-ktuft` command is a shortcut for always using the KTuft profile:
 
 ```bash
 sqlfluff-ktuft fix models/intermediate/staff/int_gar_staff_annual_clean.sql --config .sqlfluff -n
 ```
 
-This keeps the project `.sqlfluff`, pre-commit hooks, and dbt Cloud formatting
-behavior unchanged. The wrapper only affects commands where you explicitly call
-`sqlfluff-ktuft`.
+### Add More Profiles
+
+Edit `~/.config/sqlfluff-ktuft/profiles.json` to add internal or client-specific
+standards.
+
+Example:
+
+```json
+{
+  "repo": {
+    "description": "Use the repo/environment SQLFluff configuration unchanged.",
+    "args": []
+  },
+  "ktuft": {
+    "description": "Use the KTuft personal drafting formatter profile.",
+    "args": [
+      "--rules",
+      "AL01,ST05,LT12,Ktuft_KL01,Ktuft_KL02,Ktuft_KL03,Ktuft_KL04,Ktuft_KL05,Ktuft_KL06,Ktuft_KL07,Ktuft_KL08,Ktuft_KL09,Ktuft_KL10,Ktuft_KL11,Ktuft_KL12,Ktuft_KL13,Ktuft_KL14,Ktuft_KL15,Ktuft_KL16,Ktuft_KL17,Ktuft_KL18,Ktuft_KL19"
+    ]
+  },
+  "internal": {
+    "description": "Use a personal internal SQLFluff config.",
+    "args": [
+      "--config",
+      "/Users/ktuft/.config/sqlfluff/internal.sqlfluff"
+    ]
+  }
+}
+```
+
+Profile `args` are appended after the SQLFluff command arguments, so they can
+override the project config for an explicit personal run.
+
+## VS Code Toggle Workflow
+
+The clean VS Code setup is:
+
+1. Configure the SQLFluff extension to call `sqlfluff-profile` as its SQLFluff
+   executable.
+2. Use the extension's existing "Fix Current File" command normally.
+3. Bind a separate hotkey to `sqlfluff-profile next` to cycle profiles.
+
+The important detail is that VS Code keeps calling the same executable. The
+active profile changes outside the repo, in your user config.
+
+Example VS Code user settings:
+
+```json
+{
+  "sqlfluff.executablePath": "sqlfluff-profile"
+}
+```
+
+Keep the repo's `.sqlfluff` settings in place. The `repo` profile will use them
+unchanged.
+
+Example VS Code user tasks:
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "SQLFluff Profile: Next",
+      "type": "process",
+      "command": "sqlfluff-profile",
+      "args": ["next"],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "SQLFluff Profile: Current",
+      "type": "process",
+      "command": "sqlfluff-profile",
+      "args": ["current"],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    }
+  ]
+}
+```
+
+Example VS Code keybindings:
+
+```json
+[
+  {
+    "key": "ctrl+alt+s",
+    "command": "workbench.action.tasks.runTask",
+    "args": "SQLFluff Profile: Next"
+  },
+  {
+    "key": "ctrl+alt+shift+s",
+    "command": "workbench.action.tasks.runTask",
+    "args": "SQLFluff Profile: Current"
+  }
+]
+```
+
+After toggling, run the SQLFluff extension's normal "Fix Current File" command.
+That command will use the active profile because it calls `sqlfluff-profile`.
+
+If you do not want the extension to use this toggle, do not change
+`sqlfluff.executablePath`. You can still use terminal commands and tasks
+manually.
 
 ## Uninstall
 
@@ -146,17 +294,32 @@ directory:
 pip uninstall sqlfluff-ktuft
 ```
 
-If you created the optional wrapper script, remove it:
+If you previously created a manual wrapper script, remove it:
 
 ```bash
 rm ~/.local/bin/sqlfluff-ktuft
+```
+
+If you configured VS Code to call the profile wrapper, remove this user setting
+or change it back to the normal SQLFluff executable:
+
+```json
+{
+  "sqlfluff.executablePath": "sqlfluff"
+}
+```
+
+You can also remove the user-level profile state:
+
+```bash
+rm -rf ~/.config/sqlfluff-ktuft
 ```
 
 To leave a project's original formatter alone:
 
 - Do not add `Ktuft_*` rules to the project `.sqlfluff`.
 - Do not add this package to project requirements unless the team wants it.
-- Do not add the wrapper to project pre-commit hooks.
+- Do not add `sqlfluff-profile` or `sqlfluff-ktuft` to project pre-commit hooks.
 - Use the plugin only through explicit local commands such as `sqlfluff-ktuft fix ...`.
 
 After uninstalling, verify SQLFluff no longer sees these rules:

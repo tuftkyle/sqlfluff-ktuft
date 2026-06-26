@@ -12,5 +12,9 @@ dependencies = ["sqlfluff>=3.5,<4"]
 [project.urls]
 Repository = "https://github.com/tuftkyle/sqlfluff-ktuft"
 
+[project.scripts]
+sqlfluff-ktuft = "sqlfluff_ktuft.profile_cli:ktuft_main"
+sqlfluff-profile = "sqlfluff_ktuft.profile_cli:main"
+
 [project.entry-points.sqlfluff]
 ktuft = "sqlfluff_ktuft"
