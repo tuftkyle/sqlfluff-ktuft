@@ -125,7 +125,9 @@ This creates:
 Default profiles:
 
 - `repo`: passes through to SQLFluff without adding rules or config. This keeps
-  the repo/environment formatter unchanged.
+  the repo/environment formatter unchanged. When this package is installed, the
+  wrapper also excludes the `Ktuft_*` rules so they do not leak into normal repo
+  formatting.
 - `ktuft`: adds the KTuft personal rule profile.
 
 List profiles:
@@ -198,64 +200,63 @@ Example:
 Profile `args` are appended after the SQLFluff command arguments, so they can
 override the project config for an explicit personal run.
 
-## VS Code Toggle Workflow
+## VS Code Formatting Workflow
 
-The clean VS Code setup is:
+The recommended editor flow is:
 
-1. Configure the SQLFluff extension to call `sqlfluff-profile` as its SQLFluff
-   executable.
-2. Use the extension's existing "Fix Current File" command normally.
-3. Bind a separate hotkey to `sqlfluff-profile next` to cycle profiles.
+1. Install the VS Code SQLFluff extension: `sqlfluff.vscode-sqlfluff`.
+2. Run the installer from the workspace root.
+3. Use VS Code's normal **Format Document** command, usually `Shift+Alt+F`.
+4. Toggle the active profile only when needed.
 
-The important detail is that VS Code keeps calling the same executable. The
-active profile changes outside the repo, in your user config.
+Run this from the workspace you want to configure:
 
-Example VS Code user settings:
-
-```json
-{
-  "sqlfluff.executablePath": "sqlfluff-profile"
-}
+```bash
+sqlfluff-profile install-vscode --print-keybindings
 ```
 
-Keep the repo's `.sqlfluff` settings in place. The `repo` profile will use them
-unchanged.
+That writes:
 
-Example VS Code user tasks:
+- `.vscode/settings.json`
+- `.vscode/tasks.json`
 
-```json
-{
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "SQLFluff Profile: Next",
-      "type": "process",
-      "command": "sqlfluff-profile",
-      "args": ["next"],
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      }
-    },
-    {
-      "label": "SQLFluff Profile: Current",
-      "type": "process",
-      "command": "sqlfluff-profile",
-      "args": ["current"],
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      }
-    }
-  ]
-}
+The generated workspace settings:
+
+- point the SQLFluff extension at `sqlfluff-profile`,
+- enable SQLFluff formatting for `sql`, `jinja-sql`, and `snowflake-sql`,
+- set `sqlfluff.vscode-sqlfluff` as the default formatter for those languages.
+
+After that, **Format Document** uses whichever profile is active:
+
+```bash
+sqlfluff-profile use repo
+sqlfluff-profile use ktuft
 ```
 
-Example VS Code keybindings:
+You can also use the generated task `SQLFluff Profile: Next` to toggle profiles
+without using a terminal.
+
+If the workspace is not the current directory, pass it explicitly:
+
+```bash
+sqlfluff-profile install-vscode --workspace /path/to/workspace --print-keybindings
+```
+
+If VS Code cannot find `sqlfluff-profile`, pass the executable path explicitly:
+
+```bash
+sqlfluff-profile install-vscode \
+  --workspace /path/to/workspace \
+  --executable /home/ktuft/.local/bin/sqlfluff-profile
+```
+
+### Optional Keybindings
+
+VS Code keybindings are user-level client settings. In Remote WSL, this means
+the keybindings usually belong on the Windows/client side, while workspace
+settings and tasks belong in the WSL workspace. The installer prints this
+snippet when you pass `--print-keybindings`, but it does not edit your global
+keybindings automatically.
 
 ```json
 [
@@ -268,12 +269,57 @@ Example VS Code keybindings:
     "key": "ctrl+alt+shift+s",
     "command": "workbench.action.tasks.runTask",
     "args": "SQLFluff Profile: Current"
+  },
+  {
+    "key": "ctrl+alt+shift+d",
+    "command": "workbench.action.tasks.runTask",
+    "args": "SQLFluff Profile: Debug"
+  },
+  {
+    "key": "ctrl+alt+shift+f",
+    "command": "workbench.action.tasks.runTask",
+    "args": "SQLFluff Profile: Fix Current File Including Ignored"
   }
 ]
 ```
 
-After toggling, run the SQLFluff extension's normal "Fix Current File" command.
-That command will use the active profile because it calls `sqlfluff-profile`.
+The normal formatter shortcut remains VS Code's built-in `Shift+Alt+F`. The
+extra `Ctrl+Alt+Shift+F` task is only for ignored files where the SQLFluff
+extension refuses to format before it reaches the wrapper.
+
+### Generated VS Code Settings
+
+The installer merges these values into `.vscode/settings.json`:
+
+```json
+{
+  "sqlfluff.executablePath": "sqlfluff-profile",
+  "sqlfluff.format.enabled": true,
+  "sqlfluff.format.languages": [
+    "sql",
+    "jinja-sql",
+    "snowflake-sql"
+  ],
+  "[sql]": {
+    "editor.defaultFormatter": "sqlfluff.vscode-sqlfluff"
+  },
+  "[jinja-sql]": {
+    "editor.defaultFormatter": "sqlfluff.vscode-sqlfluff"
+  },
+  "[snowflake-sql]": {
+    "editor.defaultFormatter": "sqlfluff.vscode-sqlfluff"
+  }
+}
+```
+
+The generated tasks are:
+
+```text
+SQLFluff Profile: Current
+SQLFluff Profile: Next
+SQLFluff Profile: Debug
+SQLFluff Profile: Fix Current File Including Ignored
+```
 
 If you do not want the extension to use this toggle, do not change
 `sqlfluff.executablePath`. You can still use terminal commands and tasks
@@ -307,6 +353,14 @@ or change it back to the normal SQLFluff executable:
 {
   "sqlfluff.executablePath": "sqlfluff"
 }
+```
+
+If you used `sqlfluff-profile install-vscode`, remove or edit these workspace
+files:
+
+```text
+.vscode/settings.json
+.vscode/tasks.json
 ```
 
 You can also remove the user-level profile state:
