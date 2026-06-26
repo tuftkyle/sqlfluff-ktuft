@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import re
 
-from sqlfluff.core.parser import BaseSegment, NewlineSegment, SourceFix, WhitespaceSegment
+from sqlfluff.core.parser import (
+    BaseSegment,
+    KeywordSegment,
+    NewlineSegment,
+    SourceFix,
+    WhitespaceSegment,
+)
 from sqlfluff.core.rules import BaseRule, LintFix, LintResult, RuleContext
 from sqlfluff.core.rules.crawlers import RootOnlyCrawler, SegmentSeekerCrawler
 
@@ -33,6 +39,10 @@ def _keyword(segment, value: str) -> bool:
 
 def _keyword_in(segment, values: set[str]) -> bool:
     return segment.is_type("keyword") and segment.raw.lower() in values
+
+
+_JOIN_CONDITION_ANCHORS = {"on", "using"}
+_BOOLEAN_OPERATORS = {"and", "or"}
 
 
 def _previous_code_index(raw_segments, start_index: int) -> int | None:
@@ -144,6 +154,48 @@ def _replace_or_create_line_indent(raw_segments, code_index: int, indent: str):
             edit_segments,
         )
     ] if edit_segments else []
+
+
+def _move_leading_boolean_operator_fixes(raw_segments, operator_index: int):
+    operator_segment = raw_segments[operator_index]
+    if operator_segment.raw.lower() not in _BOOLEAN_OPERATORS:
+        return []
+
+    line_no = _line_no(operator_segment)
+    if _line_first_code_index(raw_segments, line_no) != operator_index:
+        return []
+
+    previous_code_index = _previous_code_index(raw_segments, operator_index)
+    next_code_index = _next_code_index(raw_segments, operator_index)
+    if previous_code_index is None or next_code_index is None:
+        return []
+    if _line_no(raw_segments[previous_code_index]) == line_no:
+        return []
+    if _line_no(raw_segments[next_code_index]) != line_no:
+        return []
+    if _keyword_in(raw_segments[previous_code_index], _JOIN_CONDITION_ANCHORS):
+        return []
+
+    fixes = [
+        LintFix.create_after(
+            raw_segments[previous_code_index],
+            [
+                WhitespaceSegment(" "),
+                KeywordSegment(operator_segment.raw.lower()),
+            ],
+        ),
+        LintFix.delete(operator_segment),
+    ]
+    fixes.extend(
+        LintFix.delete(between_segment)
+        for between_segment in _segments_between(
+            raw_segments,
+            operator_index,
+            next_code_index,
+        )
+        if between_segment.is_type("whitespace")
+    )
+    return fixes
 
 
 def _newline_with_indent(indent: str, newline_count: int = 1):
@@ -524,7 +576,7 @@ class Rule_Ktuft_KL01(BaseRule):
 
 
 class Rule_Ktuft_KL02(BaseRule):
-    """Keep join predicates in trailing `join ... on` form."""
+    """Keep join condition anchors in trailing `join ... on|using` form."""
 
     name = "ktuft.join_on_trailing"
     groups = ("all", "ktuft")
@@ -536,7 +588,7 @@ class Rule_Ktuft_KL02(BaseRule):
         raw_segments = _raw_segments(context)
 
         for index, segment in enumerate(raw_segments):
-            if not _keyword(segment, "on"):
+            if not _keyword_in(segment, _JOIN_CONDITION_ANCHORS):
                 continue
 
             previous_code_index = _previous_code_index(raw_segments, index)
@@ -596,7 +648,10 @@ class Rule_Ktuft_KL02(BaseRule):
                 LintResult(
                     anchor=segment,
                     fixes=fixes,
-                    description="Keep `on` on the same line as the joined relation.",
+                    description=(
+                        "Keep join condition anchors on the same line as "
+                        "the joined relation."
+                    ),
                 )
             )
 
@@ -622,7 +677,7 @@ class Rule_Ktuft_KL03(BaseRule):
         seen_lines = set()
 
         for index, segment in enumerate(raw_segments):
-            if not _keyword(segment, "on"):
+            if not _keyword_in(segment, _JOIN_CONDITION_ANCHORS):
                 continue
 
             previous_code_index = _previous_code_index(raw_segments, index)
@@ -654,9 +709,7 @@ class Rule_Ktuft_KL03(BaseRule):
                         _newline_with_indent(predicate_indent),
                     )
                 )
-            elif not _line_indent(raw_segments, next_code_index).startswith(
-                predicate_indent
-            ):
+            elif _line_indent(raw_segments, next_code_index) != predicate_indent:
                 fixes.extend(
                     _replace_or_create_line_indent(
                         raw_segments,
@@ -687,9 +740,24 @@ class Rule_Ktuft_KL03(BaseRule):
                     continue
 
                 seen_lines.add(predicate_line_no)
-                if _line_indent(raw_segments, predicate_index).startswith(
-                    predicate_indent
-                ):
+                boolean_operator_fixes = _move_leading_boolean_operator_fixes(
+                    raw_segments,
+                    predicate_index,
+                )
+                if boolean_operator_fixes:
+                    violations.append(
+                        LintResult(
+                            anchor=predicate_segment,
+                            fixes=boolean_operator_fixes,
+                            description=(
+                                "Keep join boolean operators trailing on "
+                                "the preceding predicate line."
+                            ),
+                        )
+                    )
+                    continue
+
+                if _line_indent(raw_segments, predicate_index) == predicate_indent:
                     continue
 
                 fixes = _replace_or_create_line_indent(

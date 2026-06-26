@@ -410,13 +410,17 @@ from
 
 ### `Ktuft_KL02` / `ktuft.join_on_trailing`
 
-Keeps `on` on the same line as the joined relation.
+Keeps join condition anchors such as `on` and `using` on the same line as the
+joined relation.
 
 Before:
 
 ```sql
 left join dim_grantee as g
     on f.grantee_id = g.id
+
+left join dim_service_area as s
+    using (service_area_id)
 ```
 
 After:
@@ -424,24 +428,30 @@ After:
 ```sql
 left join dim_grantee as g on
     f.grantee_id = g.id
+
+left join dim_service_area as s using
+    (service_area_id)
 ```
 
 ### `Ktuft_KL03` / `ktuft.join_predicate_indent`
 
-Indents join predicate lines one level deeper than the join line.
+Indents join predicate lines one level deeper than the join line and keeps
+boolean operators trailing on the preceding predicate line.
 
 Before:
 
 ```sql
 left join dim_grantee as g on
 f.grantee_id = g.id
+    and f.reporting_period_id = g.reporting_period_id
 ```
 
 After:
 
 ```sql
 left join dim_grantee as g on
-    f.grantee_id = g.id
+    f.grantee_id = g.id and
+    f.reporting_period_id = g.reporting_period_id
 ```
 
 ### `Ktuft_KL04` / `ktuft.expand_inline_cte`

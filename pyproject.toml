@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sqlfluff-ktuft"
-version = "0.1.1"
+version = "0.1.2"
 description = "Personal SQLFluff rules for KTuft SQL layout preferences."
 requires-python = ">=3.10"
 dependencies = ["sqlfluff>=3.5,<4"]
